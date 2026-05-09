@@ -1,0 +1,34 @@
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Compiled binaries (project-specific)
+/drive-unlocker
+/drive-unlocker.exe
+
+# Coverage / profiling
+coverage.out
+coverage.html
+*.prof
+
+# Editor / IDE / agent state
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Synology Drive backups created during local testing — these contain
+# real user database snapshots and must never be committed.
+.unlocker-backups/
+
+# Build helpers occasionally produced by `go test`
+/__debug_bin*
