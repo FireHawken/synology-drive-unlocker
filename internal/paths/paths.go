@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -54,28 +55,43 @@ func Validate(p string) error {
 // CheckCollision returns an error if target equals, contains, or is contained by
 // any of the other paths. All paths must already be normalized.
 func CheckCollision(target string, others []string) error {
-	t := caseFold(target)
+	t := caseFold(strings.TrimRight(target, `\/`))
 	for _, o := range others {
 		if o == "" {
 			continue
 		}
-		other := caseFold(o)
+		other := caseFold(strings.TrimRight(o, `\/`))
 		switch {
 		case t == other:
 			return fmt.Errorf("path is already used by another sync session: %s", o)
-		case strings.HasPrefix(t, other):
+		case isChildPath(t, other):
 			return fmt.Errorf("path is inside another sync session's folder: %s", o)
-		case strings.HasPrefix(other, t):
+		case isChildPath(other, t):
 			return fmt.Errorf("path contains another sync session's folder: %s", o)
 		}
 	}
 	return nil
 }
 
-// caseFold lowercases the path on Windows where the filesystem is case-insensitive.
-// On POSIX it returns the path unchanged.
+func isChildPath(child, parent string) bool {
+	if child == parent {
+		return false
+	}
+	return strings.HasPrefix(child, parent+separatorFor(parent))
+}
+
+func separatorFor(p string) string {
+	if strings.Contains(p, `\`) {
+		return `\`
+	}
+	return "/"
+}
+
+// caseFold lowercases paths on case-insensitive filesystems. Windows is always
+// treated as case-insensitive; macOS defaults to case-insensitive APFS/HFS+ for
+// almost all consumer installations, so we do the pragmatic thing there too.
 func caseFold(p string) string {
-	if filepath.Separator == '\\' {
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 		return strings.ToLower(p)
 	}
 	return p

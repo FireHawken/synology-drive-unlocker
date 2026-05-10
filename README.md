@@ -18,8 +18,10 @@ The workaround itself isn't novel — Synology users have been swapping paths in
 
 ## What it does
 
-1. Detects your Synology Drive Client database directory
-   (`%LOCALAPPDATA%\SynologyDrive\data\db` on Windows).
+1. Detects your Synology Drive Client database directory:
+   `%LOCALAPPDATA%\SynologyDrive\data\db` on Windows, and either
+   `~/.SynologyDrive/data/db` or
+   `~/Library/Application Support/SynologyDrive/data/db` on macOS.
 2. Refuses to do anything if the client is running or a previous session left
    `*.sqlite-wal` / `*.sqlite-shm` files behind.
 3. Lists your existing sync sessions, lets you pick one with the arrow keys.
@@ -89,7 +91,11 @@ specific setup. **Independent off-tool backups are non-negotiable.**
 
 ## From a release
 
-Download `drive-unlocker.exe` from the [Releases](https://github.com/FireHawken/synology-drive-unlocker/releases) page and run it from any terminal.
+Download the matching asset from the [Releases](https://github.com/FireHawken/synology-drive-unlocker/releases) page and run it from any terminal.
+
+- Windows: `drive-unlocker.exe`
+- Apple Silicon Mac: `synology-drive-unlocker_<version>_darwin_arm64.tar.gz`
+- Intel Mac: `synology-drive-unlocker_<version>_darwin_amd64.tar.gz`
 
 ## From source
 
@@ -98,14 +104,14 @@ Requires Go 1.25 or newer.
 ```sh
 git clone https://github.com/FireHawken/synology-drive-unlocker.git
 cd synology-drive-unlocker
-go build -ldflags="-s -w" -trimpath -o drive-unlocker .
+go build -ldflags="-s -w" -trimpath -o synology-drive-unlocker .
 ```
 
 The resulting binary is around 8 MB. If you want it smaller and don't mind
 the occasional false-positive antivirus flag, run it through UPX:
 
 ```sh
-upx --best --lzma drive-unlocker.exe   # ~3 MB
+upx --best --lzma synology-drive-unlocker.exe   # ~3 MB
 ```
 
 # Usage
@@ -113,11 +119,16 @@ upx --best --lzma drive-unlocker.exe   # ~3 MB
 > [!IMPORTANT]
 > **Read before running.** This tool may corrupt or destroy your synced data — see the warnings at the top of this file and in the [Safety](#safety) section. The author is not liable for any consequences. Synology may change or block the database mechanism this tool depends on at any time, which can lead to data damage. **Take an independent backup of the source folder you intend to sync before proceeding, and do not run this if you cannot afford to lose that data.** Continuing means you accept the risk yourself.
 
-> **Stop Synology Drive Client first.** Right-click the tray icon → *Quit*.
-> Don't kill the process — it must finalise its WAL files.
+> **Stop Synology Drive Client first.** On Windows, right-click the tray icon
+> and choose *Quit*. On macOS, quit Synology Drive from the menu bar icon.
+> Don't kill the process unless you have to - it must finalise its WAL files.
 
 ```sh
+# Windows
 .\drive-unlocker.exe
+
+# macOS
+./synology-drive-unlocker
 ```
 
 You'll see the main menu with a preflight banner:
@@ -155,11 +166,18 @@ Confirm and the four databases are copied back over the live ones.
 | OS      | Status                                                                |
 |---------|-----------------------------------------------------------------------|
 | Windows | Supported. Tested on Windows 11.                                      |
-| macOS   | Stub only. Database paths and process detection are not implemented. |
-| Linux   | Stub only. Same caveat as macOS.                                     |
+| macOS   | Supported, but needs more real-world testing across client versions. |
+| Linux   | Stub only. Database paths and process detection are not implemented. |
 
-Adding a platform is a matter of filling in `internal/platform/platform_<os>.go`
-and `internal/process/process_<os>.go` — pull requests welcome.
+macOS detection checks both known Synology layouts:
+`~/.SynologyDrive/data/db` and
+`~/Library/Application Support/SynologyDrive/data/db`. Process preflight checks
+for `SynologyDrive`, `Synology Drive Client`, `cloud-drive-daemon`, and
+`cloud-drive-ui`.
+
+Adding Linux support is a matter of filling in
+`internal/platform/platform_linux.go` and validating the process names used by
+the Linux client - pull requests welcome.
 
 # Project layout
 

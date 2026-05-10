@@ -51,7 +51,11 @@ func newPicker(info platform.Info, startHint string) pickerModel {
 	}
 
 	ti := textinput.New()
-	ti.Placeholder = `e.g. C:\Users\you\.config`
+	if info.OS == "darwin" || info.OS == "linux" {
+		ti.Placeholder = "e.g. /Users/you/.config"
+	} else {
+		ti.Placeholder = `e.g. C:\Users\you\.config`
+	}
 	ti.Prompt = "> "
 	ti.CharLimit = 500
 	ti.Width = 60

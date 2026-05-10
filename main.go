@@ -29,7 +29,7 @@ func run() error {
 	info, err := platform.Detect()
 	if err != nil {
 		if errors.Is(err, platform.ErrUnsupported) {
-			return fmt.Errorf("this OS is not supported yet — Windows only for now")
+			return fmt.Errorf("this OS is not supported yet — Windows and macOS only for now")
 		}
 		return fmt.Errorf("detect platform: %w", err)
 	}

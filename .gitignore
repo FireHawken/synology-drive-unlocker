@@ -10,6 +10,10 @@
 # Compiled binaries (project-specific)
 /drive-unlocker
 /drive-unlocker.exe
+/synology-drive-unlocker
+/dist/
+/.gocache/
+/.gopath/
 
 # Coverage / profiling
 coverage.out

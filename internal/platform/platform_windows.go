@@ -34,6 +34,10 @@ func detect() (Info, error) {
 		DriveDataDir:  dataDir,
 		DBDir:         dbDir,
 		ClientProcess: "cloud-drive-ui.exe",
+		ClientProcesses: []string{
+			"cloud-drive-ui.exe",
+			"cloud-drive-daemon.exe",
+		},
 	}, nil
 }
 

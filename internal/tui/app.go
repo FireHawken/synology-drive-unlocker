@@ -61,7 +61,7 @@ func RunPreflight(info platform.Info) PreflightResult {
 		}
 	}
 
-	if running, err := process.IsRunning(info.ClientProcess); err == nil {
+	if running, err := process.IsAnyRunning(info.Processes()); err == nil {
 		p.clientRunning = running
 	}
 
