@@ -174,7 +174,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case backToMenuMsg:
 		a.state = stateMenu
-		a.menu = newMenu(a.info, RunPreflight(a.info))
+		pre := RunPreflight(a.info)
+		a.preflight = pre
+		if pre.CanProceed() && a.sysDB == nil {
+			if err := a.openSysDB(); err != nil {
+				a.fatalErr = err
+				a.state = stateFatal
+				return a, nil
+			}
+		}
+		a.menu = newMenu(a.info, pre)
 		return a, nil
 
 	case menuChoiceMsg:
@@ -204,11 +213,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case restoreEntryPickedMsg:
-		a.restoreConf = newRestoreConfirm(a.info, m.entry)
+		a.restoreConf = newRestoreConfirm(a.info, m.entry, a.sysDB)
 		a.state = stateRestoreConfirm
 		return a, nil
 
 	case restoreDoneMsg:
+		a.sysDB = m.sysDB
 		a.restoreErr = m.err
 		a.state = stateRestoreResult
 		return a, nil
@@ -220,6 +230,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a App) handleMenuChoice(c menuChoice) (tea.Model, tea.Cmd) {
 	switch c {
 	case menuChange:
+		if err := a.ensureSysDB(); err != nil {
+			a.fatalErr = err
+			a.state = stateFatal
+			return a, nil
+		}
 		s, err := newSessions(a.sysDB)
 		if err != nil {
 			a.fatalErr = err
@@ -399,6 +414,31 @@ func (a App) renderRestoreResult() string {
 	return b.String()
 }
 
+// Close releases database handles owned by the App.
+func (a App) Close() error {
+	if a.sysDB == nil {
+		return nil
+	}
+	return a.sysDB.Close()
+}
+
+func (a *App) ensureSysDB() error {
+	if a.sysDB != nil {
+		return nil
+	}
+	return a.openSysDB()
+}
+
+func (a *App) openSysDB() error {
+	sysPath := filepath.Join(a.info.DBDir, "sys.sqlite")
+	s, err := db.OpenSys(sysPath)
+	if err != nil {
+		return fmt.Errorf("open sys.sqlite: %w", err)
+	}
+	a.sysDB = s
+	return nil
+}
+
 // applyChangesCmd performs the backup + db updates and emits applyDoneMsg.
 // Returned as a tea.Cmd so the UI can show a "working..." view while it runs.
 func applyChangesCmd(ctx context.Context, info platform.Info, sysDB *db.SysDB,
@@ -445,9 +485,25 @@ func applyChangesCmd(ctx context.Context, info platform.Info, sysDB *db.SysDB,
 }
 
 // restoreCmd performs the restore and emits restoreDoneMsg.
-func restoreCmd(info platform.Info, entry backup.Entry) tea.Cmd {
+func restoreCmd(info platform.Info, entry backup.Entry, sysDB *db.SysDB) tea.Cmd {
 	return func() tea.Msg {
-		err := backup.Restore(entry.Dir, info.DBDir)
-		return restoreDoneMsg{err: err}
+		if sysDB != nil {
+			if err := sysDB.Close(); err != nil {
+				return restoreDoneMsg{sysDB: sysDB, err: fmt.Errorf("close sys.sqlite before restore: %w", err)}
+			}
+		}
+
+		restoreErr := backup.Restore(entry.Dir, info.DBDir)
+		reopened, openErr := db.OpenSys(filepath.Join(info.DBDir, "sys.sqlite"))
+		switch {
+		case restoreErr != nil && openErr != nil:
+			return restoreDoneMsg{err: fmt.Errorf("restore: %w; reopen sys.sqlite: %v", restoreErr, openErr)}
+		case restoreErr != nil:
+			return restoreDoneMsg{sysDB: reopened, err: restoreErr}
+		case openErr != nil:
+			return restoreDoneMsg{err: fmt.Errorf("reopen sys.sqlite after restore: %w", openErr)}
+		default:
+			return restoreDoneMsg{sysDB: reopened}
+		}
 	}
 }

@@ -30,7 +30,10 @@ type (
 	restoreEntryPickedMsg struct{ entry backup.Entry }
 
 	// restoreDoneMsg is sent after a restore finishes.
-	restoreDoneMsg struct{ err error }
+	restoreDoneMsg struct {
+		sysDB *db.SysDB
+		err   error
+	}
 
 	// backToMenuMsg returns to the main menu from any subscreen.
 	backToMenuMsg struct{}

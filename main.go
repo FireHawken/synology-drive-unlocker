@@ -16,7 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const version = "0.1.0"
+const version = "0.1.2"
 
 func main() {
 	if err := run(); err != nil {
@@ -44,12 +44,17 @@ func run() error {
 			return fmt.Errorf("open sys.sqlite: %w", err)
 		}
 		sysDB = s
-		defer sysDB.Close()
 	}
 
 	app := tui.New(info, pre, sysDB, version)
 	prog := tea.NewProgram(app, tea.WithAltScreen())
-	if _, err := prog.Run(); err != nil {
+	finalModel, err := prog.Run()
+	if finalApp, ok := finalModel.(tui.App); ok {
+		_ = finalApp.Close()
+	} else if sysDB != nil {
+		_ = sysDB.Close()
+	}
+	if err != nil {
 		return fmt.Errorf("tui: %w", err)
 	}
 	return nil

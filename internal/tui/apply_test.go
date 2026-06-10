@@ -137,6 +137,121 @@ func TestApplyChangesCmd_DefaultSessionUpdatesOpenFolder(t *testing.T) {
 	}
 }
 
+func TestRestoreCmd_ClosesAndReopensSysDB(t *testing.T) {
+	dbDir := makeFakeDBDir(t)
+	info := platform.Info{
+		OS:            "windows",
+		DBDir:         dbDir,
+		ClientProcess: "cloud-drive-ui.exe",
+	}
+
+	sysDB, err := db.OpenSys(filepath.Join(dbDir, "sys.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir, err := backup.Create(dbDir, backup.Meta{
+		ToolVersion: "test",
+		SessionID:   6,
+		OldPath:     `C:\temporary_test\`,
+		NewPath:     `C:\Users\demo\.atom\`,
+	})
+	if err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	if _, err := sysDB.UpdateSessionFolder(context.Background(), 6,
+		`C:\temporary_test\`, `C:\Users\demo\.atom\`); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	msg, ok := restoreCmd(info, backup.Entry{Dir: dir}, sysDB)().(restoreDoneMsg)
+	if !ok {
+		t.Fatalf("unexpected msg type %T", msg)
+	}
+	if msg.err != nil {
+		t.Fatalf("restore: %v", msg.err)
+	}
+	if msg.sysDB == nil {
+		t.Fatal("restore did not reopen sys.sqlite")
+	}
+	defer msg.sysDB.Close()
+
+	if _, err := sysDB.SyncSessions(context.Background()); err == nil {
+		t.Fatal("old sysDB handle still usable after restore")
+	}
+	gotAfterRestore := readSyncFolder(t, filepath.Join(dbDir, "sys.sqlite"), 6)
+	if gotAfterRestore != `C:\temporary_test\` {
+		t.Errorf("post-restore sync_folder = %q", gotAfterRestore)
+	}
+	sessions, err := msg.sysDB.SyncSessions(context.Background())
+	if err != nil {
+		t.Fatalf("reopened sysDB query: %v", err)
+	}
+	var gotFromReopened string
+	for _, s := range sessions {
+		if s.ID == 6 {
+			gotFromReopened = s.SyncFolder
+		}
+	}
+	if gotFromReopened != `C:\temporary_test\` {
+		t.Errorf("reopened sysDB sync_folder = %q", gotFromReopened)
+	}
+}
+
+func TestNewConfirm_IgnoresBackupSessionsForCollision(t *testing.T) {
+	dbDir := t.TempDir()
+	if err := db.MakeSysFixture(filepath.Join(dbDir, "sys.sqlite"), []db.FixtureSession{
+		{
+			ID:          3,
+			ConnID:      2,
+			ShareName:   "artursdrive",
+			RemotePath:  "/Backup/RYZEN/C/Users/artur/.ssh/",
+			SyncFolder:  `C:\Users\artur\.ssh\`,
+			SessionType: 2,
+			Status:      0,
+		},
+		{
+			ID:          9,
+			ConnID:      2,
+			ShareName:   "artursdrive",
+			RemotePath:  "/Drive/",
+			SyncFolder:  `D:\SynologyDrive\`,
+			SessionType: 1,
+			Status:      0,
+		},
+		{
+			ID:          10,
+			ConnID:      2,
+			ShareName:   "artursdrive",
+			RemotePath:  "/ssh/",
+			SyncFolder:  `C:\mytemp\`,
+			SessionType: 1,
+			Status:      0,
+		},
+	}); err != nil {
+		t.Fatalf("make sys.sqlite: %v", err)
+	}
+
+	sysDB, err := db.OpenSys(filepath.Join(dbDir, "sys.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sysDB.Close()
+
+	conf, err := newConfirm(platform.Info{OS: "windows", DBDir: dbDir}, sysDB, db.Session{
+		ID:         10,
+		ShareName:  "artursdrive",
+		RemotePath: "/ssh/",
+		SyncFolder: `C:\mytemp\`,
+	}, `C:\Users\artur\.ssh\`, "test")
+	if err != nil {
+		t.Fatalf("newConfirm: %v", err)
+	}
+	if conf.collisionWarn != "" {
+		t.Fatalf("unexpected collision warning: %s", conf.collisionWarn)
+	}
+}
+
 func readSyncFolder(t *testing.T, path string, id int64) string {
 	t.Helper()
 	conn, err := sql.Open("sqlite", path)

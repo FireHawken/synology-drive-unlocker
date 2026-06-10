@@ -70,10 +70,15 @@ func (s *SysDB) SyncSessions(ctx context.Context) ([]Session, error) {
 	return out, nil
 }
 
-// AllSyncFolders returns sync_folder values for every row in session_table
-// regardless of session_type. Used for collision checks against new paths.
-func (s *SysDB) AllSyncFolders(ctx context.Context) ([]string, error) {
-	rows, err := s.conn.QueryContext(ctx, `SELECT sync_folder FROM session_table`)
+// SyncFoldersForCollision returns sync_folder values from other sync sessions.
+// Backup tasks (session_type != 1) intentionally do not participate: Synology
+// stores backup jobs in the same table, but they do not reserve a sync target.
+func (s *SysDB) SyncFoldersForCollision(ctx context.Context, excludeSessionID int64) ([]string, error) {
+	const q = `SELECT sync_folder
+	           FROM session_table
+	          WHERE session_type = 1 AND id <> ?
+	          ORDER BY id`
+	rows, err := s.conn.QueryContext(ctx, q, excludeSessionID)
 	if err != nil {
 		return nil, fmt.Errorf("query sync_folders: %w", err)
 	}

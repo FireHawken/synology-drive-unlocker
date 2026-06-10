@@ -55,20 +55,27 @@ func TestSyncSessions_FromExample(t *testing.T) {
 	}
 }
 
-func TestAllSyncFolders_FromExample(t *testing.T) {
+func TestSyncFoldersForCollision_FromExample(t *testing.T) {
 	db, err := OpenSys(freshSysFixture(t))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
 	defer db.Close()
 
-	all, err := db.AllSyncFolders(context.Background())
+	all, err := db.SyncFoldersForCollision(context.Background(), 6)
 	if err != nil {
-		t.Fatalf("AllSyncFolders: %v", err)
+		t.Fatalf("SyncFoldersForCollision: %v", err)
 	}
-	// Fixture has 4 rows total (3 sync + 1 backup).
-	if len(all) != 4 {
-		t.Errorf("expected 4 entries, got %d (%v)", len(all), all)
+	// Fixture has 3 sync rows total, but id=6 is the session being edited.
+	// The backup task id=3 must not participate in sync-folder collision checks.
+	if len(all) != 2 {
+		t.Errorf("expected 2 entries, got %d (%v)", len(all), all)
+	}
+	want := []string{`D:\SynologyDrive\`, `C:\Users\demo\.ssh\`}
+	for i := range want {
+		if i >= len(all) || all[i] != want[i] {
+			t.Fatalf("collision folders = %v, want %v", all, want)
+		}
 	}
 }
 

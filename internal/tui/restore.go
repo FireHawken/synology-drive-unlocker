@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/FireHawken/synology-drive-unlocker/internal/backup"
+	"github.com/FireHawken/synology-drive-unlocker/internal/db"
 	"github.com/FireHawken/synology-drive-unlocker/internal/platform"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -77,7 +78,7 @@ func (m restoreListModel) View() string {
 		if e.MetaError != nil {
 			line = fmt.Sprintf("%s   (corrupt meta: %v)   %s", ts, e.MetaError, e.Dir)
 		} else {
-			line = fmt.Sprintf("%s   session id=%d   %s  →  %s",
+			line = fmt.Sprintf("%s   session id=%d   snapshot: %s   before → %s",
 				ts, e.Meta.SessionID, e.Meta.OldPath, e.Meta.NewPath)
 		}
 		if i == m.cursor {
@@ -96,17 +97,18 @@ func (m restoreListModel) View() string {
 type restoreConfirmModel struct {
 	info  platform.Info
 	entry backup.Entry
+	sysDB *db.SysDB
 
 	cursor    int // 0 = Restore, 1 = Cancel
 	restoring bool
 	spin      spinner.Model
 }
 
-func newRestoreConfirm(info platform.Info, entry backup.Entry) restoreConfirmModel {
+func newRestoreConfirm(info platform.Info, entry backup.Entry, sysDB *db.SysDB) restoreConfirmModel {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = styleAccent
-	return restoreConfirmModel{info: info, entry: entry, cursor: 1, spin: sp}
+	return restoreConfirmModel{info: info, entry: entry, sysDB: sysDB, cursor: 1, spin: sp}
 }
 
 func (m restoreConfirmModel) Init() tea.Cmd { return nil }
@@ -137,7 +139,7 @@ func (m restoreConfirmModel) Update(msg tea.Msg) (restoreConfirmModel, tea.Cmd) 
 				return m, func() tea.Msg { return backToMenuMsg{} }
 			}
 			m.restoring = true
-			return m, tea.Batch(m.spin.Tick, restoreCmd(m.info, m.entry))
+			return m, tea.Batch(m.spin.Tick, restoreCmd(m.info, m.entry, m.sysDB))
 		}
 	}
 	return m, nil
@@ -160,8 +162,10 @@ func (m restoreConfirmModel) View() string {
 	fmt.Fprintf(&body, "Backup:        %s\n", m.entry.Dir)
 	fmt.Fprintf(&body, "Created at:    %s\n", m.entry.Meta.CreatedAt.Local().Format("2006-01-02 15:04:05"))
 	if m.entry.Meta.SessionID != 0 {
-		fmt.Fprintf(&body, "Captured for:  session id=%d (%s → %s)\n",
-			m.entry.Meta.SessionID, m.entry.Meta.OldPath, m.entry.Meta.NewPath)
+		fmt.Fprintf(&body, "Snapshot has:  session id=%d at %s\n",
+			m.entry.Meta.SessionID, m.entry.Meta.OldPath)
+		fmt.Fprintf(&body, "Before change: %s → %s\n",
+			m.entry.Meta.OldPath, m.entry.Meta.NewPath)
 	}
 	body.WriteString("\nFiles to overwrite in " + m.info.DBDir + ":\n")
 	for _, name := range m.entry.Meta.FilesCopied {

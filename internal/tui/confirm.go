@@ -37,16 +37,9 @@ func newConfirm(info platform.Info, sysDB *db.SysDB, session db.Session, newPath
 	}
 	willTouchOpen := open != "" && trimTrailingSep(open) == trimTrailingSep(session.SyncFolder)
 
-	all, err := sysDB.AllSyncFolders(context.Background())
+	others, err := sysDB.SyncFoldersForCollision(context.Background(), session.ID)
 	if err != nil {
 		return confirmModel{}, fmt.Errorf("read sync_folders: %w", err)
-	}
-	others := make([]string, 0, len(all))
-	for _, f := range all {
-		if f == session.SyncFolder {
-			continue
-		}
-		others = append(others, f)
 	}
 	collisionWarn := ""
 	if err := paths.CheckCollision(newPath, others); err != nil {
